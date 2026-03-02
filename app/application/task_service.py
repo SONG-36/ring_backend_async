@@ -1,67 +1,35 @@
 import uuid
-from datetime import datetime
-
-from app.domain.task import Task, TaskStatus
+from app.domain.task import Task
+from app.domain.task_repository import TaskRepository
 
 
 class TaskService:
 
-    def __init__(self, repo, summary_service):
-        self.repo = repo
-        self.summary_service = summary_service
-        self.executor = None
+    def __init__(self, repository: TaskRepository):
+        self.repository = repository
 
-    def set_executor(self, executor):
-        self.executor = executor
-
-    def submit(self, sleep_hours: float, steps: int) -> str:
+    def submit(self) -> Task:
         task_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        task = Task(id=task_id)
+        self.repository.save(task)
+        return task
 
-        payload = {
-            "sleep_hours": sleep_hours,
-            "steps": steps
-        }
-
-        task = Task(
-            id=task_id,
-            status=TaskStatus.PENDING,
-            payload=payload,
-            retry_count=0,
-            max_retries=3,
-            result=None,
-            error=None,
-            created_at=now,
-            updated_at=now
-        )
-
-        self.repo.save(task)
-        self.executor.enqueue(task_id)
-
-        return task_id
-
-    def process(self, task_id: str):
-        task = self.repo.get(task_id)
+    def process(self, task_id: str, should_fail: bool = False) -> None:
+        task = self.repository.get(task_id)
 
         if not task:
-            return
-
-        if task.status in (TaskStatus.DONE, TaskStatus.FAILED):
-            return
+            raise Exception("Task not found")
 
         task.start()
-        self.repo.update(task)
+        self.repository.update(task)
 
         try:
-            result = self.summary_service.generate(
-                task.payload["sleep_hours"],
-                task.payload["steps"]
-            )
-            task.complete(result)
+            if should_fail:
+                raise Exception("Simulated failure")
+
+            task.complete({"result": "ok"})
+
         except Exception as e:
             task.fail(str(e))
 
-        self.repo.update(task)
-
-    def get(self, task_id: str):
-        return self.repo.get(task_id)
+        self.repository.update(task)

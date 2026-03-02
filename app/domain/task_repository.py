@@ -1,17 +1,18 @@
 from abc import ABC, abstractmethod
-from .task import Task
+from typing import Optional
+from app.domain.task import Task
 
 
 class TaskRepository(ABC):
 
     @abstractmethod
-    def save(self, task: Task):
+    def save(self, task: Task) -> None:
         pass
 
     @abstractmethod
-    def get(self, task_id: str) -> Task:
+    def get(self, task_id: str) -> Optional[Task]:
         pass
 
     @abstractmethod
-    def update(self, task: Task):
+    def update(self, task: Task) -> None:
         pass
