@@ -1,10 +1,9 @@
 import threading
 import queue
-from typing import Callable
 
 
 class LocalExecutor:
-    def __init__(self, handler: Callable[[str], None]):
+    def __init__(self, handler):
         self.queue = queue.Queue()
         self.handler = handler
         self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)

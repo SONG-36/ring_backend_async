@@ -5,57 +5,55 @@ from typing import Optional, Dict
 
 class TaskStatus(str, Enum):
     PENDING = "PENDING"
-    RUNNING = "RUNNING"
-    DONE = "DONE"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
 
 class Task:
-    def __init__(
-        self,
-        id: str,
-        max_retries: int = 2,
-        status: TaskStatus = TaskStatus.PENDING,
-        retry_count: int = 0,
-        result: Optional[Dict] = None,
-        error: Optional[str] = None,
-    ):
+    def __init__(self, id: str, max_retries: int = 3):
         self.id = id
-        self.status = status
-        self.retry_count = retry_count
+        self.status = TaskStatus.PENDING
+        self.attempt = 0
         self.max_retries = max_retries
-        self.result = result
-        self.error = error
+        self.result: Optional[Dict] = None
+        self.error: Optional[str] = None
+        self.version = 0
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
 
-    # ----------------------
-    # 状态机方法
-    # ----------------------
+    def _touch(self):
+        self.version += 1
+        self.updated_at = datetime.utcnow()
 
     def start(self):
         if self.status != TaskStatus.PENDING:
             raise Exception("Task can only start from PENDING")
-        self.status = TaskStatus.RUNNING
-        self.updated_at = datetime.utcnow()
+        self.attempt += 1
+        self.status = TaskStatus.PROCESSING
+        self._touch()
 
     def complete(self, result: Dict):
-        if self.status != TaskStatus.RUNNING:
-            raise Exception("Task can only complete from RUNNING")
-        self.status = TaskStatus.DONE
+        if self.status != TaskStatus.PROCESSING:
+            raise Exception("Task can only complete from PROCESSING")
+        self.status = TaskStatus.COMPLETED
         self.result = result
-        self.updated_at = datetime.utcnow()
+        self.error = None
+        self._touch()
 
     def fail(self, error: str):
-        if self.status != TaskStatus.RUNNING:
-            raise Exception("Task can only fail from RUNNING")
-
-        self.retry_count += 1
+        if self.status != TaskStatus.PROCESSING:
+            raise Exception("Task can only fail from PROCESSING")
+        self.status = TaskStatus.FAILED
         self.error = error
+        self._touch()
 
-        if self.retry_count < self.max_retries:
-            self.status = TaskStatus.PENDING
-        else:
-            self.status = TaskStatus.FAILED
+    def can_retry(self):
+        return self.status == TaskStatus.FAILED and self.attempt < self.max_retries
 
-        self.updated_at = datetime.utcnow()
+    def retry(self):
+        if not self.can_retry():
+            raise Exception("Retry not allowed")
+        self.status = TaskStatus.PENDING
+        self.error = None
+        self._touch()

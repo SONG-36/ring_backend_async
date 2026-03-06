@@ -1,35 +1,36 @@
-from fastapi import APIRouter
-from app.utils.response import success
+from fastapi import APIRouter, HTTPException
+from app.application.task_service import TaskService
+from app.infrastructure.in_memory_task_repo import InMemoryTaskRepository
+from app.infrastructure.local_executor import LocalExecutor
 
-router = APIRouter(prefix="/tasks")
+router = APIRouter()
 
-task_service = None
-
-
-def set_task_service(service):
-    global task_service
-    task_service = service
-
-
-@router.post("/report")
-def create_report_task(data: dict):
-    task_id = task_service.submit(
-        data["sleep_hours"],
-        data["steps"]
-    )
-    return success({"task_id": task_id})
+# 全局单例
+repo = InMemoryTaskRepository()
+service = TaskService(repo)
+executor = LocalExecutor(service.process)
+service.executor = executor
 
 
-@router.get("/{task_id}")
+@router.post("/tasks")
+def create_task():
+    task = service.submit()
+    return {
+        "task_id": task.id,
+        "status": task.status
+    }
+
+
+@router.get("/tasks/{task_id}")
 def get_task(task_id: str):
-    task = task_service.get(task_id)
-
+    task = repo.get(task_id)
     if not task:
-        return success(None, message="task not found")
+        raise HTTPException(status_code=404, detail="Task not found")
 
-    return success({
-        "id": task.id,
+    return {
+        "task_id": task.id,
         "status": task.status,
+        "attempt": task.attempt,
         "result": task.result,
         "error": task.error
-    })
+    }

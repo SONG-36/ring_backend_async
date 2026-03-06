@@ -1,4 +1,5 @@
 import uuid
+import time
 from app.domain.task import Task
 from app.domain.task_repository import TaskRepository
 
@@ -19,25 +20,46 @@ class TaskService:
 
         return task
 
-    def process(self, task_id: str, should_fail: bool = False) -> None:
+    def process(self, task_id: str) -> None:
         task = self.repository.get(task_id)
-
         if not task:
             raise Exception("Task not found")
 
-        if task.status in ["DONE", "FAILED"]:
-            return  # 幂等保护
+        if task.status != "PENDING":
+            return
 
-        task.start()
-        self.repository.update(task)
+        start_version = task.version
 
         try:
-            if should_fail:
-                raise Exception("Simulated failure")
+            def do_start(t):
+                t.start()
 
-            task.complete({"result": "ok"})
+            self.repository.update_with_condition(task_id, start_version, do_start)
+
+            # Simulated work
+            time.sleep(1)
+
+            def do_complete(t):
+                t.complete({"result": "ok"})
+
+            self.repository.update_with_condition(task_id, task.version, do_complete)
 
         except Exception as e:
-            task.fail(str(e))
 
-        self.repository.update(task)
+            def do_fail(t):
+                t.fail(str(e))
+
+            try:
+                self.repository.update_with_condition(task_id, task.version, do_fail)
+            except:
+                return
+
+            task = self.repository.get(task_id)
+            if task.can_retry():
+                time.sleep(2 ** task.attempt)
+
+                def do_retry(t):
+                    t.retry()
+
+                self.repository.update_with_condition(task_id, task.version, do_retry)
+                self.executor.enqueue(task_id)

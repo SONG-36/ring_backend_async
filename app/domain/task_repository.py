@@ -14,5 +14,5 @@ class TaskRepository(ABC):
         pass
 
     @abstractmethod
-    def update(self, task: Task) -> None:
+    def update_with_condition(self, task_id: str, expected_version: int, update_fn):
         pass
